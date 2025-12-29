@@ -16,12 +16,15 @@ from .config import WP_SITE_URL, MIN_IMPRESSIONS_FOR_ANALYSIS
 
 # GSC Configuration
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
-SITE_URL = 'https://themeaningmovement.com/'  # Must match GSC property
 
-# Paths
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-CREDENTIALS_FILE = PROJECT_ROOT / 'ClientData' / 'credentials' / 'gsc_oauth.json'
-TOKEN_FILE = PROJECT_ROOT / 'ClientData' / 'credentials' / 'gsc_token.json'
+# Get GSC settings from environment via config
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+SITE_URL = os.getenv('GSC_SITE_URL', 'sc-domain:example.com')
+CREDENTIALS_FILE = Path(os.getenv('GSC_CREDENTIALS_FILE', str(Path(__file__).parent.parent / 'gsc_oauth.json')))
+TOKEN_FILE = Path(os.getenv('GSC_TOKEN_FILE', str(Path(__file__).parent.parent / 'gsc_token.json')))
 
 
 class GSCClient:

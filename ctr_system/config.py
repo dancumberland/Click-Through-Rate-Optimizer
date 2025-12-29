@@ -6,18 +6,22 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from parent directory
+# This allows .env to be in the site directory (outside the repo)
+load_dotenv(Path.cwd() / '.env')
+load_dotenv()  # Also try current directory
 
 # =============================================================================
 # PATHS
 # =============================================================================
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-TOOLS_DIR = PROJECT_ROOT / "Operations" / "Tools"
-CTR_SYSTEM_DIR = TOOLS_DIR / "ctr_system"
-DB_PATH = TOOLS_DIR / "site_crawl.db"
-REPORTS_DIR = PROJECT_ROOT / "Operations" / "CTR_Reports"
+# Default to current working directory for site-specific files
+PROJECT_ROOT = Path(__file__).parent.parent
+DEFAULT_DB_PATH = Path.cwd() / "site_crawl.db"
+DEFAULT_REPORTS_DIR = Path.cwd() / "CTR_Reports"
+
+DB_PATH = os.getenv("DB_PATH", str(DEFAULT_DB_PATH))
+REPORTS_DIR = Path(os.getenv("REPORTS_DIR", str(DEFAULT_REPORTS_DIR)))
 
 # Ensure reports directory exists
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
