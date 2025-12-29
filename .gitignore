@@ -1,0 +1,56 @@
+# Environment
+.env
+.env.local
+
+# Database
+*.db
+*.db-journal
+site_crawl.db
+
+# Reports
+CTR_Reports/
+reports/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Google credentials
+*_token.json
+*_credentials.json
+gsc_token.json
+gsc_oauth.json
+
+# Logs
+*.log

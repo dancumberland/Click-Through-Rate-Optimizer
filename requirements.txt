@@ -1,0 +1,13 @@
+# Google APIs
+google-api-python-client==2.108.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+
+# Environment and configuration
+python-dotenv==1.0.0
+
+# HTTP requests
+requests==2.31.0
+
+# Email
+smtplib  # Built-in to Python
