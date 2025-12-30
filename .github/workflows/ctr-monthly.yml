@@ -1,7 +1,7 @@
 # ABOUTME: GitHub Actions workflow for automated CTR optimization
 # ABOUTME: Runs monthly review using Claude CLI
 
-name: CTR Monthly Review
+name: CTR Monthly Review - DCL
 
 on:
   # Run at 6am UTC on the 1st of each month

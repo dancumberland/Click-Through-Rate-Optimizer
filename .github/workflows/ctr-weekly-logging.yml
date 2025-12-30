@@ -1,7 +1,7 @@
 # ABOUTME: GitHub Actions workflow for weekly GSC data logging
 # ABOUTME: Preserves GSC data beyond 16-month window
 
-name: CTR Weekly Data Logging
+name: CTR Weekly Data Logging - DCL
 
 on:
   # Run every Sunday at 2am UTC
