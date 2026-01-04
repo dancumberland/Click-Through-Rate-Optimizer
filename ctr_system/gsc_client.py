@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
 # ABOUTME: Google Search Console API client for CTR system
-# ABOUTME: Supports per-page date filtering and query-level analysis
+# ABOUTME: Supports service account and OAuth authentication, per-page date filtering
 
 import os
+import json
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
 
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 from .config import WP_SITE_URL, MIN_IMPRESSIONS_FOR_ANALYSIS
+from dotenv import load_dotenv
 
 # GSC Configuration
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
 
-# Get GSC settings from environment via config
-import os
-from dotenv import load_dotenv
+# Load environment variables
 load_dotenv()
 
 SITE_URL = os.getenv('GSC_SITE_URL', 'sc-domain:example.com')
 CREDENTIALS_FILE = Path(os.getenv('GSC_CREDENTIALS_FILE', str(Path(__file__).parent.parent / 'gsc_oauth.json')))
 TOKEN_FILE = Path(os.getenv('GSC_TOKEN_FILE', str(Path(__file__).parent.parent / 'gsc_token.json')))
+SERVICE_ACCOUNT_JSON = os.getenv('GSC_SERVICE_ACCOUNT_JSON', '')
 
 
 class GSCClient:
@@ -35,7 +37,43 @@ class GSCClient:
         self._authenticate()
 
     def _authenticate(self):
-        """Handle OAuth2 authentication"""
+        """Handle authentication: service account (preferred) or OAuth2 fallback"""
+        creds = None
+
+        # Try service account authentication first
+        if SERVICE_ACCOUNT_JSON:
+            creds = self._get_service_account_credentials()
+        elif CREDENTIALS_FILE.exists():
+            # Fall back to OAuth
+            creds = self._get_oauth_credentials()
+
+        if not creds:
+            raise ValueError(
+                'No authentication method available. Set GSC_SERVICE_ACCOUNT_JSON env var '
+                'or ensure GSC_CREDENTIALS_FILE exists for OAuth.'
+            )
+
+        self.service = build('searchconsole', 'v1', credentials=creds)
+
+    def _get_service_account_credentials(self) -> Optional[ServiceAccountCredentials]:
+        """Load service account credentials from env var or file"""
+        try:
+            # Try parsing as JSON string from environment variable
+            service_account_info = json.loads(SERVICE_ACCOUNT_JSON)
+            return ServiceAccountCredentials.from_service_account_info(
+                service_account_info,
+                scopes=SCOPES
+            )
+        except json.JSONDecodeError:
+            raise ValueError(
+                'GSC_SERVICE_ACCOUNT_JSON is not valid JSON. '
+                'Should contain the full service account JSON credentials.'
+            )
+        except Exception as e:
+            raise ValueError(f'Failed to load service account credentials: {e}')
+
+    def _get_oauth_credentials(self) -> Optional[Credentials]:
+        """Load OAuth2 credentials from token file or initiate flow"""
         creds = None
 
         if TOKEN_FILE.exists():
@@ -45,13 +83,16 @@ class GSCClient:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_FILE), SCOPES)
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(CREDENTIALS_FILE),
+                    SCOPES
+                )
                 creds = flow.run_local_server(port=0)
 
             with open(TOKEN_FILE, 'w') as token:
                 token.write(creds.to_json())
 
-        self.service = build('searchconsole', 'v1', credentials=creds)
+        return creds
 
     def _query(self, request_body: Dict) -> List[Dict]:
         """Execute a GSC query"""
