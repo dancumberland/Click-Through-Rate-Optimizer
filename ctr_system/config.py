@@ -110,7 +110,9 @@ MIN_IMPACT_SCORE = 5.0      # impact_score = impressions * ctr_gap (must be >= 5
 # Env-overridable so a first run on a site can be deliberately small: every page
 # changed is locked for MIN_DAYS_BETWEEN_CHANGES afterwards, so a bad batch is
 # expensive to walk back.
-MAX_EXPERIMENTS_PER_MONTH = int(os.getenv("MAX_EXPERIMENTS_PER_MONTH", "50"))
+# The env var arrives empty (not unset) from a GitHub Actions input that was
+# left blank, so a plain int(getenv(..., "50")) would crash every scheduled run.
+MAX_EXPERIMENTS_PER_MONTH = int(os.getenv("MAX_EXPERIMENTS_PER_MONTH") or 50)
 
 # Maximum title length
 MAX_TITLE_LENGTH = 60
