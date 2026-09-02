@@ -840,7 +840,16 @@ def get_optimization_opportunities(
     min_impact_score: float = 5.0,
     max_results: int = 50
 ) -> List[Dict]:
-    """Get optimization opportunities from a review based on CTR gap thresholds"""
+    """Get optimization opportunities from a review based on CTR gap thresholds.
+
+    min_ctr_gap_percent is RELATIVE underperformance against the expected CTR for
+    the page's position band, not an absolute CTR difference. This used to be
+    compared as an absolute gap (ctr_gap >= 0.05), which no page could ever meet:
+    benchmarks are recalculated from the site's own data each run, and the site's
+    expected CTR tops out around 1.3%, so a 5-percentage-point gap is impossible.
+    That is why every monthly review found 0 pages and the optimizer never
+    optimized anything. Found 2026-09-02.
+    """
     ph = _placeholder()
     min_ctr_gap = min_ctr_gap_percent / 100.0
 
@@ -851,7 +860,8 @@ def get_optimization_opportunities(
             FROM gsc_page_metrics
             WHERE review_id = {ph}
               AND eligible_for_optimization = TRUE
-              AND ctr_gap >= {ph}
+              AND expected_ctr > 0
+              AND ctr_gap >= expected_ctr * {ph}
               AND impact_score >= {ph}
             ORDER BY impact_score DESC
             LIMIT {ph}
