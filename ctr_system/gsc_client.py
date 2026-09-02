@@ -4,6 +4,7 @@
 
 import os
 import json
+from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
@@ -342,12 +343,18 @@ class GSCClient:
         return earliest_seen
 
     def _url_to_slug(self, url: str) -> str:
-        """Extract slug from full URL"""
-        # Remove site URL prefix
-        slug = url.replace(SITE_URL, '').replace('https://themeaningmovement.com/', '')
-        # Remove trailing slash
-        slug = slug.rstrip('/')
-        return slug
+        """Extract the slug from a full page URL.
+
+        This used to strip SITE_URL, which is the Search Console property name
+        ("sc-domain:example.com") and never appears in a page URL, plus a
+        hardcoded themeaningmovement.com prefix. On any other site both
+        replacements missed and the whole URL was passed on as the slug, so
+        every CMS lookup failed. Parse the path instead.
+        """
+        path = urlparse(url).path.rstrip('/')
+        if not path:
+            return ''
+        return path.rsplit('/', 1)[-1]
 
 
 def get_gsc_client() -> GSCClient:

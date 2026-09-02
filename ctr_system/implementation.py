@@ -6,8 +6,9 @@ import base64
 import requests
 from typing import Optional, Dict
 
-from .config import WP_SITE_URL, WP_USER, WP_APP_PASSWORD
+from .config import WP_SITE_URL, WP_USER, WP_APP_PASSWORD, CMS_BACKEND
 from . import database as db
+from . import strapi
 
 
 def get_auth_headers() -> Dict[str, str]:
@@ -21,6 +22,13 @@ def get_auth_headers() -> Dict[str, str]:
 
 
 def get_post_id_from_slug(slug: str) -> Optional[int]:
+    """Get the CMS id for a slug, from whichever CMS this site runs."""
+    if CMS_BACKEND == "strapi":
+        return strapi.get_post_id_from_slug(slug)
+    return _wp_get_post_id_from_slug(slug)
+
+
+def _wp_get_post_id_from_slug(slug: str) -> Optional[int]:
     """Get WordPress post ID from slug"""
     url = f"{WP_SITE_URL}/wp-json/wp/v2/posts?slug={slug}"
     response = requests.get(url)
@@ -33,6 +41,13 @@ def get_post_id_from_slug(slug: str) -> Optional[int]:
 
 
 def get_current_title(post_id: int) -> str:
+    """Get the title the site currently serves, from whichever CMS it runs."""
+    if CMS_BACKEND == "strapi":
+        return strapi.get_current_title(post_id)
+    return _wp_get_current_title(post_id)
+
+
+def _wp_get_current_title(post_id: int) -> str:
     """Get current title (RankMath SEO title or post title)"""
     url = f"{WP_SITE_URL}/wp-json/wp/v2/posts/{post_id}"
     response = requests.get(url, headers=get_auth_headers())
@@ -50,6 +65,13 @@ def get_current_title(post_id: int) -> str:
         return post['title']['rendered']
 
     return ""
+
+
+def update_title(post_id: int, new_title: str) -> bool:
+    """Write the new title through whichever CMS this site runs."""
+    if CMS_BACKEND == "strapi":
+        return strapi.update_title(post_id, new_title)
+    return update_rankmath_title(post_id, new_title)
 
 
 def update_rankmath_title(post_id: int, new_title: str) -> bool:
@@ -95,8 +117,8 @@ def implement_title_change(
     # Get current title
     old_title = get_current_title(post_id)
 
-    # Update via RankMath API
-    success = update_rankmath_title(post_id, new_title)
+    # Write the title through the site's CMS
+    success = update_title(post_id, new_title)
     if not success:
         print(f"  Failed to update title for {page_slug}")
         return None
@@ -119,23 +141,26 @@ def implement_title_change(
         review_id=review_id
     )
 
-    # Also log to seo_changes for compatibility with existing system
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO seo_changes
-        (page_url, wp_post_id, field_changed, old_value, new_value,
-         change_reason, gsc_ctr_at_change, gsc_impressions_at_change, gsc_clicks_at_change)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        page_url, post_id, 'rank_math_title',
-        old_title, new_title,
-        f"CTR experiment: {hypothesis}",
-        pre_ctr * 100,  # Store as percentage
-        pre_impressions, pre_clicks
-    ))
-    conn.commit()
-    conn.close()
+    # Also log to seo_changes for compatibility with existing system.
+    # get_connection() is a context manager and the placeholder differs per
+    # backend, so the old conn.cursor() / "?" form here crashed on the first
+    # successful title change on either database.
+    ph = db._placeholder()
+    with db.get_connection() as conn:
+        cursor = db._get_cursor(conn)
+        cursor.execute(f"""
+            INSERT INTO seo_changes
+            (page_url, wp_post_id, field_changed, old_value, new_value,
+             change_reason, gsc_ctr_at_change, gsc_impressions_at_change, gsc_clicks_at_change)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+        """, (
+            page_url, post_id, 'seo_title' if CMS_BACKEND == 'strapi' else 'rank_math_title',
+            old_title, new_title,
+            f"CTR experiment: {hypothesis}",
+            pre_ctr * 100,  # Store as percentage
+            pre_impressions, pre_clicks
+        ))
+        conn.commit()
 
     print(f"  ✅ Updated: {old_title[:40]}... → {new_title[:40]}...")
     return experiment_id
@@ -143,42 +168,50 @@ def implement_title_change(
 
 def revert_experiment(experiment_id: int) -> bool:
     """Revert an experiment to its original title"""
-    conn = db.get_connection()
-    cursor = conn.cursor()
+    ph = db._placeholder()
 
-    cursor.execute("""
-        SELECT page_slug, wp_post_id, old_title, new_title
-        FROM optimization_experiments
-        WHERE id = ?
-    """, (experiment_id,))
+    with db.get_connection() as conn:
+        cursor = db._get_cursor(conn)
+        cursor.execute(f"""
+            SELECT page_slug, wp_post_id, old_title, new_title
+            FROM optimization_experiments
+            WHERE id = {ph}
+        """, (experiment_id,))
+        row = cursor.fetchone()
 
-    row = cursor.fetchone()
     if not row:
         print(f"  Experiment {experiment_id} not found")
-        conn.close()
         return False
 
     page_slug = row['page_slug']
     post_id = row['wp_post_id']
     old_title = row['old_title']
 
+    # A Strapi revert needs the documentId that pairs with this numeric id, and
+    # that pairing is only cached for the length of a run. Re-resolve it from
+    # the slug so a revert works in a fresh process.
+    if CMS_BACKEND == "strapi":
+        post_id = get_post_id_from_slug(page_slug)
+        if not post_id:
+            print(f"  Could not find {page_slug} in Strapi to revert")
+            return False
+
     # Revert title
-    success = update_rankmath_title(post_id, old_title)
+    success = update_title(post_id, old_title)
     if not success:
         print(f"  Failed to revert {page_slug}")
-        conn.close()
         return False
 
     # Update experiment status
-    cursor.execute("""
-        UPDATE optimization_experiments
-        SET status = 'reverted',
-            ended_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """, (experiment_id,))
+    with db.get_connection() as conn:
+        cursor = db._get_cursor(conn)
+        cursor.execute(f"""
+            UPDATE optimization_experiments
+            SET status = 'reverted',
+                ended_at = CURRENT_TIMESTAMP
+            WHERE id = {ph}
+        """, (experiment_id,))
+        conn.commit()
 
-    conn.commit()
-    conn.close()
-
-    print(f"  ↩️  Reverted {page_slug} to original title")
+    print(f"  \u21a9\ufe0f  Reverted {page_slug} to original title")
     return True

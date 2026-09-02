@@ -35,6 +35,19 @@ WP_USER = os.getenv("WP_USER")
 WP_APP_PASSWORD = os.getenv("Wordpress_Rest_API_KEY")
 
 # =============================================================================
+# STRAPI (dancumberlandlabs.com)
+# =============================================================================
+
+STRAPI_URL = os.getenv("STRAPI_URL", "https://cms.dancumberlandlabs.com")
+STRAPI_API_TOKEN = os.getenv("STRAPI_API_TOKEN")
+
+# Which CMS this site's titles get written to: "wordpress" (RankMath, which is
+# what The Meaning Movement runs) or "strapi" (Dan Cumberland Labs). Default to
+# whichever one is actually configured so an existing .env keeps working.
+CMS_BACKEND = os.getenv("CMS_BACKEND", "strapi" if STRAPI_API_TOKEN else "wordpress").lower()
+
+
+# =============================================================================
 # GOOGLE SEARCH CONSOLE
 # =============================================================================
 
@@ -93,8 +106,11 @@ DEFAULT_CTR_BENCHMARKS = [
 MIN_CTR_GAP_PERCENT = 5.0   # Must be underperforming expected CTR by at least 5%
 MIN_IMPACT_SCORE = 5.0      # impact_score = impressions * ctr_gap (must be >= 5.0)
 
-# Safety limit (prevent over-optimization if site has many underperforming pages)
-MAX_EXPERIMENTS_PER_MONTH = 50
+# Safety limit (prevent over-optimization if site has many underperforming pages).
+# Env-overridable so a first run on a site can be deliberately small: every page
+# changed is locked for MIN_DAYS_BETWEEN_CHANGES afterwards, so a bad batch is
+# expensive to walk back.
+MAX_EXPERIMENTS_PER_MONTH = int(os.getenv("MAX_EXPERIMENTS_PER_MONTH", "50"))
 
 # Maximum title length
 MAX_TITLE_LENGTH = 60
@@ -192,10 +208,19 @@ def validate_config():
 
     errors = []
 
-    if not WP_USER:
-        errors.append("WP_USER not set in .env")
-    if not WP_APP_PASSWORD:
-        errors.append("Wordpress_Rest_API_KEY not set in .env")
+    # Only demand credentials for the CMS this site actually writes to.
+    # Requiring the WordPress pair unconditionally would block every Strapi
+    # site from running at all.
+    if CMS_BACKEND == "strapi":
+        if not STRAPI_API_TOKEN:
+            errors.append("STRAPI_API_TOKEN not set in .env")
+        if not STRAPI_URL:
+            errors.append("STRAPI_URL not set in .env")
+    else:
+        if not WP_USER:
+            errors.append("WP_USER not set in .env")
+        if not WP_APP_PASSWORD:
+            errors.append("Wordpress_Rest_API_KEY not set in .env")
     if not shutil.which("claude"):
         errors.append("Claude CLI not found. Install Claude Code: npm install -g @anthropic-ai/claude-code")
 
