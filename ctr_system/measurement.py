@@ -219,29 +219,28 @@ def check_for_significant_changes() -> List[Dict]:
 
 def get_experiment_summary() -> Dict:
     """Get summary of all experiments"""
-    conn = db.get_connection()
-    cursor = conn.cursor()
+    with db.get_connection() as conn:
+        cursor = db._get_cursor(conn)
 
-    # Active experiments
-    cursor.execute("SELECT COUNT(*) as cnt FROM optimization_experiments WHERE status = 'active'")
-    active = cursor.fetchone()['cnt']
+        # Active experiments
+        cursor.execute("SELECT COUNT(*) as cnt FROM optimization_experiments WHERE status = 'active'")
+        active = cursor.fetchone()['cnt']
 
-    # Completed experiments by outcome
-    cursor.execute("""
-        SELECT outcome, COUNT(*) as cnt, AVG(ctr_change_pct) as avg_change
-        FROM optimization_experiments
-        WHERE status = 'completed' AND outcome IS NOT NULL
-        GROUP BY outcome
-    """)
-    outcomes = {row['outcome']: {'count': row['cnt'], 'avg_change': row['avg_change']}
-                for row in cursor.fetchall()}
+        # Completed experiments by outcome
+        cursor.execute("""
+            SELECT outcome, COUNT(*) as cnt, AVG(ctr_change_pct) as avg_change
+            FROM optimization_experiments
+            WHERE status = 'completed' AND outcome IS NOT NULL
+            GROUP BY outcome
+        """)
+        outcomes = {row['outcome']: {'count': row['cnt'], 'avg_change': row['avg_change']}
+                    for row in cursor.fetchall()}
 
-    # Overall success rate
-    total_completed = sum(o['count'] for o in outcomes.values())
-    improved = outcomes.get('improved', {}).get('count', 0)
-    success_rate = (improved / total_completed * 100) if total_completed > 0 else 0
+        # Overall success rate
+        total_completed = sum(o['count'] for o in outcomes.values())
+        improved = outcomes.get('improved', {}).get('count', 0)
+        success_rate = (improved / total_completed * 100) if total_completed > 0 else 0
 
-    conn.close()
 
     return {
         'active': active,
