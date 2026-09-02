@@ -19,6 +19,8 @@ from ctr_system.config import (
     REPORTS_DIR
 )
 from ctr_system import database as db
+from ctr_system import strapi
+from ctr_system.config import CMS_BACKEND
 from ctr_system.gsc_client import get_gsc_client
 from ctr_system.analysis import (
     refresh_benchmarks,
@@ -187,6 +189,13 @@ def run_monthly_review(dry_run: bool = False):
             continue
 
     print()
+
+    # A title written to the CMS is invisible on a static site until a build
+    # runs. Kick one here so the experiment actually starts when we say it did.
+    if experiments_started and not dry_run and CMS_BACKEND == "strapi":
+        print("Publishing title changes to the live site...")
+        strapi.trigger_site_rebuild()
+        print()
 
     # Step 6: Update review stats
     eligible_count = len([o for o in opportunities if o.get('eligible', True)])

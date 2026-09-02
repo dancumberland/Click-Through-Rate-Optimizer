@@ -152,3 +152,39 @@ def update_title(post_id: int, new_title: str) -> bool:
         return False
 
     return True
+
+
+def trigger_site_rebuild() -> bool:
+    """Kick a Cloudflare Pages build so the new titles actually reach the site.
+
+    dancumberlandlabs.com is a static Astro build that fetches from Strapi at
+    build time, so a write here changes nothing a searcher can see until a build
+    runs. Nothing else in this tool did that: the first live run's title changes
+    sat in the CMS and only went live because the nightly article publisher
+    happened to POST the same hook. In a month with no publishing they would have
+    sat there indefinitely and the experiment would have measured no change.
+    Found 2026-09-02.
+    """
+    hook_url = os.getenv("CLOUDFLARE_DEPLOY_HOOK_URL", "").strip()
+    if not hook_url:
+        print("  CLOUDFLARE_DEPLOY_HOOK_URL not set, skipping site rebuild")
+        print("  Title changes stay invisible until the site is rebuilt.")
+        return False
+
+    req = urllib.request.Request(hook_url, data=b"", method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            code = resp.getcode()
+    except urllib.error.HTTPError as exc:
+        if exc.code == 304:
+            # Cloudflare deduped us onto a build that is already queued.
+            print("  Cloudflare deploy already queued (HTTP 304)")
+            return True
+        print("  Site rebuild failed: HTTP %s" % exc.code)
+        return False
+    except Exception as exc:
+        print("  Site rebuild failed: %s" % exc)
+        return False
+
+    print("  Site rebuild queued (HTTP %s)" % code)
+    return True
